@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2FA 定时装置 (最终优化版)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Changa:wght@700&family=Orbitron:wght@900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #3d352a; --container-bg: rgba(20, 15, 10, 0.85);
+            --text-color: #e8e6e3; --primary-color: #d32f2f; --primary-hover: #f44336;
+            --border-color: rgba(211, 47, 47, 0.4); --input-bg: rgba(0,0,0, 0.2);
+            --fuse-color: #6b4f3b; --dynamite-red: #b71c1c; --dynamite-dark-red: #8a1111;
+            --timer-glow: #ff1744;
+        }
+        body {
+            font-family: 'Changa', 'Segoe UI', sans-serif; background-color: var(--bg-color);
+            background-image: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23000000' fill-opacity='0.1' fill-rule='evenodd'%3E%3Cpath d='M0 40L40 0H20L0 20M40 40V20L20 40'/%3E%3C/g%3E%3C/svg%3E");
+            color: var(--text-color); margin: 0; padding: 20px;
+            display: flex; justify-content: center; align-items: flex-start; min-height: 100vh;
+        }
+        .container {
+            width: 100%; max-width: 600px; background-color: var(--container-bg);
+            border-radius: 4px; border: 1px solid var(--border-color); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            overflow: hidden; backdrop-filter: blur(4px);
+        }
+        .header { padding: 16px 24px; background-color: rgba(0,0,0,0.3); border-bottom: 1px solid var(--border-color); text-align: center; }
+        .header h1 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 2px; }
+        .content { padding: 24px; }
+        .account-list { position: relative; display: flex; flex-direction: column; gap: 20px; min-height: 50px;}
+        
+        /* DYNAMITE PACK STYLING */
+        .account-item { display: flex; align-items: center; justify-content: space-between; border-radius: 6px; padding: 15px; border: 2px solid var(--dynamite-dark-red); background: repeating-linear-gradient(90deg, var(--dynamite-red) 0, var(--dynamite-red) 30px, var(--dynamite-dark-red) 30px, var(--dynamite-dark-red) 33px); box-shadow: 0 4px 8px rgba(0,0,0,0.5); position: relative; transition: opacity 0.2s, transform 0.2s; }
+        .account-name { font-weight: 700; font-size: 14px; letter-spacing: 2px; text-transform: uppercase; color: rgba(255,255,255,0.7); text-shadow: 1px 1px 1px #000; margin-bottom: 10px; }
+        .account-info { flex: 1; }
+        .timer-display { background-color: #1a1a1a; border-radius: 4px; padding: 5px 15px; box-shadow: inset 0 0 8px rgba(0,0,0,0.8); border: 2px solid #333; text-align: center; margin-bottom: 15px; }
+        .account-code { font-family: 'Orbitron', 'Courier New', monospace; font-weight: 900; font-size: 32px; letter-spacing: 4px; color: var(--timer-glow); text-shadow: 0 0 4px #000, 0 0 8px var(--timer-glow), 0 0 12px var(--timer-glow); }
+        .fuse-container { display: flex; align-items: center; gap: 8px; }
+        .lit-fuse-icon { font-size: 20px; }
+        .progress-bar { flex-grow: 1; height: 6px; background-color: var(--fuse-color); border-radius: 3px; border: 1px solid #4a382b; box-shadow: inset 0 1px 2px rgba(0,0,0,0.5); overflow: visible; }
+        .progress-bar-inner { height: 100%; width: 100%; border-radius: 3px; position: relative; background: linear-gradient(to left, #ffeb3b, #ff9800 20%, #e65100 50%, #4a382b 80%, #3a2d23 95%); }
+        .progress-bar-inner::after { content: ''; position: absolute; right: -3px; top: 50%; transform: translateY(-50%); width: 10px; height: 10px; border-radius: 50%; background: white; box-shadow: 0 0 8px 3px #ffc107, 0 0 15px 6px rgba(255, 165, 0, 0.7); animation: spark-flicker 0.1s infinite; }
+        @keyframes spark-flicker { 50% { opacity: 0.7; transform: translateY(-50%) scale(0.9); } }
+        .account-actions { display: flex; flex-direction: column; gap: 10px; margin-left: 15px; }
+        /* --- CENTER ALIGNMENT FIX FOR BUTTONS --- */
+        .action-button { display: flex; align-items: center; justify-content: center; background: #333; border: 1px solid #555; border-radius: 50%; width: 36px; height: 36px; cursor: pointer; transition: all 0.2s; font-size: 18px; color: #ccc; }
+        .action-button:hover { background: #555; color: white; }
+        
+        /* FINAL EXPLOSION EFFECT */
+        .account-item.exploding { z-index: 100; animation: super-explosion-main 1000ms ease-out forwards; }
+        .account-item.exploding::before, .account-item.exploding::after { content: ''; position: absolute; top: 50%; left: 50%; background: #999; opacity: 0; border-radius: 2px; }
+        .account-item.exploding::before { animation: super-explosion-shrapnel-1 1000ms ease-out forwards; }
+        .account-item.exploding::after { animation: super-explosion-shrapnel-2 1000ms ease-out forwards; }
+        @keyframes super-explosion-main { /* ... same as before ... */ 0%   { transform: scale(1) rotate(0); } 10%  { transform: translate(10px, -8px) rotate(5deg); } 20%  { transform: translate(-10px, 8px) rotate(-5deg); opacity: 1; } 21%  { opacity: 0; } 30%  { box-shadow: 0 0 100vw 100vh rgba(255, 255, 255, 1); } 50%  { box-shadow: 0 0 100vw 100vh rgba(255, 255, 255, 0); } 60%  { box-shadow: 0 0 200px 100px rgba(10, 10, 10, 0.9), 0 0 50px 40px rgba(40,40,40,1); } 100% { transform: scale(1); opacity: 1; box-shadow: 0 4px 8px rgba(0,0,0,0.5); }}
+        @keyframes super-explosion-shrapnel-1 { 0%, 20% { opacity: 0; width: 5px; height: 5px; transform: translate(0, 0); } 21% { opacity: 1; } 100% { opacity: 0; width: 20px; height: 2px; transform: translate(-250px, -150px) rotate(-180deg); }}
+        @keyframes super-explosion-shrapnel-2 { 0%, 20% { opacity: 0; width: 5px; height: 5px; transform: translate(0, 0); } 21% { opacity: 1; } 100% { opacity: 0; width: 2px; height: 20px; transform: translate(200px, 180px) rotate(540deg); }}
+
+        /* --- CONTROL PANEL STYLING --- */
+        #add-account-form, .control-panel { padding: 20px; background-color: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 4px; margin-top: 24px; }
+        #add-account-form h2 { margin: 0 0 15px 0; font-size: 20px; text-align: center; text-transform: uppercase; }
+        input[type="text"] { width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 2px; box-sizing: border-box; background-color: var(--input-bg); color: var(--text-color); font-family: 'Courier New', Courier, monospace; }
+        .form-group { margin-bottom: 15px; }
+        .btn-submit { display: block; width: 100%; padding: 10px 15px; border: 1px solid var(--primary-color); border-radius: 2px; font-size: 14px; font-family: 'Changa', sans-serif; text-transform: uppercase; cursor: pointer; transition: all 0.2s; font-weight: 700; background-color: var(--primary-color); color: white; text-align: center; }
+        .control-panel { display: flex; flex-direction: column; gap: 15px; }
+        .warning-box {
+            background-color: #000; color: #fff; text-shadow: 1px 1px 2px #000;
+            background-image: repeating-linear-gradient(45deg, #f3ca39, #f3ca39 10px, #000 10px, #000 20px);
+            border: 2px solid #f3ca39; padding: 15px; border-radius: 4px; text-align: center;
+        }
+        .panel-buttons { display: flex; gap: 15px; }
+        .panel-buttons button { flex: 1; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header"><h1>定时装置控制台</h1></div>
+        <div class="content">
+             <p id="empty-state" style="text-align: center; color: #eee; padding: 20px 0;">无可用装置。请添加或导入。</p>
+            <div id="account-list"></div>
+            <div id="add-account-form">
+                <h2>注册新装置</h2>
+                <form id="add-form">
+                    <div class="form-group"><label for="account-name-input">装置名称</label><input type="text" id="account-name-input" required></div>
+                    <div class="form-group"><label for="account-secret-input">激活密钥</label><input type="text" id="account-secret-input" required></div>
+                    <button type="submit" class="btn-submit">确认激活</button>
+                </form>
+            </div>
+            <div class="control-panel">
+                <div class="warning-box"><strong>注意!</strong> 任何情况下都不要刷新页面，否则所有未保存的数据都将丢失。</div>
+                <div class="panel-buttons">
+                    <button id="import-btn">导入方案</button>
+                    <input type="file" id="file-input" accept=".json" style="display: none;"/>
+                    <button id="export-btn">导出方案</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="toast" style="position: fixed; bottom: -50px; left: 50%; transform: translateX(-50%); background-color: rgba(0,0,0,0.8); border: 1px solid #f3ca39; color: #f3ca39; padding: 10px 20px; border-radius: 2px; opacity: 0; transition: opacity 0.3s, bottom 0.3s; z-index: 1000;"></div>
+
+    <script>
+    // FINAL, CLEAN, WORKING SCRIPT
+    document.addEventListener('DOMContentLoaded', () => {
+        // All JS logic is identical to the previous fully functional version.
+        // The HTML structure has been updated, so the script correctly
+        // attaches to the new layout.
+        const DOM = {
+            accountList: document.getElementById('account-list'),
+            emptyState: document.getElementById('empty-state'),
+            addForm: document.getElementById('add-form'),
+            importBtn: document.getElementById('import-btn'),
+            fileInput: document.getElementById('file-input'),
+            exportBtn: document.getElementById('export-btn'),
+            toast: document.getElementById('toast'),
+            accountNameInput: document.getElementById('account-name-input'),
+            accountSecretInput: document.getElementById('account-secret-input')
+        };
+        let accounts = []; 
+        let updateInterval = null;
+        let accountDOMElements = []; 
+
+        function base32Decode(base32Str) { const b="ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"; const s=String(base32Str).replace(/[\s=]/g,"").toUpperCase(); let t=""; for(let i=0;i<s.length;i++){ const c=s.charAt(i);const v=b.indexOf(c);if(v===-1)throw new Error(`密钥包含无效字符: "${c}"`);t+=v.toString(2).padStart(5,'0')} let r=""; for(let i=0;i+8<=t.length;i+=8){r+=parseInt(t.substr(i,8),2).toString(16).padStart(2,'0')} if(!r)throw new Error("密钥过短或格式无效"); return r; }
+        async function generateTOTP(secret, crypto) { const h=base32Decode(secret);const b=h.match(/[\da-f]{2}/gi); if(!b)throw new Error("字节无效");const k=new Uint8Array(b.map(h=>parseInt(h,16)));const e=Math.floor(Date.now()/1000.0);let t=Math.floor(e/30);const y=new Uint8Array(8); for(let i=7;i>=0;i--){y[i]=t&0xff;t>>=8} const i=await crypto.subtle.importKey('raw',k,{name:'HMAC',hash:'SHA-1'},!1,['sign']);const m=await crypto.subtle.sign('HMAC',i,y);const a=new Uint8Array(m);const o=a[a.length-1]&0x0f;const c=(((a[o]&0x7f)<<24)|((a[o+1]&0xff)<<16)|((a[o+2]&0xff)<<8)|(a[o+3]&0xff))%1000000;return c.toString().padStart(6,'0'); }
+        function showToast(message) { DOM.toast.textContent=message;DOM.toast.style.bottom='20px';DOM.toast.style.opacity='1'; setTimeout(() => {DOM.toast.style.bottom='-50px';DOM.toast.style.opacity='0';}, 2000); }
+        function escapeHTML(str) { const p=document.createElement('p');p.textContent=str;return p.innerHTML; }
+        async function updateDisplay() {
+            if(accounts.length===0)return; const s=new Date().getSeconds()%30; const p=((30-s)/30)*100; const t=s===0?'none':'width 1s linear';
+            for(let i=0;i<accounts.length;i++) {
+                const e=accountDOMElements[i]; if(!e)continue; if(s===0){e.itemEl.classList.add('exploding'); setTimeout(() => {e.itemEl.classList.remove('exploding');}, 1000);}
+                const c=await generateTOTP(accounts[i].secret,window.crypto); if(e.codeEl.textContent!==c){e.codeEl.textContent=c;}
+                e.progressEl.style.transition=t; e.progressEl.style.width=`${p}%`;
+            }
+        }
+        function fullRender() {
+            DOM.accountList.innerHTML=''; accountDOMElements=[]; if(accounts.length===0){DOM.emptyState.style.display='block';return;} DOM.emptyState.style.display='none';
+            accounts.forEach((a, i) => {
+                const t=document.createElement('div'); t.className='account-item';
+                t.innerHTML=`<div class="account-info"><div class="account-name">${escapeHTML(a.name)}</div><div class="timer-display"><span class="account-code">......</span></div><div class="fuse-container"><div class="lit-fuse-icon">🔥</div><div class="progress-bar"><div class="progress-bar-inner"></div></div></div></div><div class="account-actions"><button class="action-button copy-btn" title="复制">📋</button><button class="action-button delete-btn" title="销毁">🗑️</button></div>`;
+                t.querySelector('.copy-btn').addEventListener('click', () => {navigator.clipboard.writeText(t.querySelector('.account-code').textContent);showToast('代码已复制!');});
+                t.querySelector('.delete-btn').addEventListener('click', () => {if(confirm(`确认销毁装置 "${escapeHTML(a.name)}"?`)){accounts.splice(i,1);fullRender();}});
+                DOM.accountList.appendChild(t); accountDOMElements.push({itemEl:t,codeEl:t.querySelector('.account-code'),progressEl:t.querySelector('.progress-bar-inner')});
+            });
+            updateDisplay();
+        }
+        function startUpdater() { if(updateInterval)clearInterval(updateInterval);fullRender();updateInterval=setInterval(updateDisplay, 1000);}
+        DOM.addForm.addEventListener('submit',async(e)=>{e.preventDefault();const n=DOM.accountNameInput.value.trim();const s=DOM.accountSecretInput.value.trim();if(!n||!s){alert('装置名称和激活密钥不能为空。');return;}try{await generateTOTP(s,window.crypto);accounts.push({name:n,secret:s});DOM.accountNameInput.value='';DOM.accountSecretInput.value='';fullRender();}catch(err){alert(`激活失败: 密钥无效。\n\n详情: ${err.message}`);}});
+        DOM.importBtn.addEventListener('click', ()=>DOM.fileInput.click());
+        DOM.fileInput.addEventListener('change', (e) => { const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=async(e)=>{try{const d=JSON.parse(e.target.result);if(!Array.isArray(d))throw new Error();const v=[];for(const i of d){if(i.name&&i.secret){try{await generateTOTP(i.secret,window.crypto);v.push(i);}catch(e){console.warn("跳过无效密钥",i.name);}}}accounts=v;fullRender();showToast(`成功导入 ${v.length} 个方案。`);}catch(err){alert('导入失败: 文件格式错误。');}};r.readAsText(f);e.target.value='';});
+        DOM.exportBtn.addEventListener('click', ()=>{if(accounts.length===0){alert('没有可导出的方案。');return;}const d=JSON.stringify(accounts,null,2);const b=new Blob([d],{type:'application/json'});const u=URL.createObjectURL(b);const l=document.createElement('a');l.href=u;l.download=`2fa-backup-${new Date().toISOString().slice(0,10)}.json`;l.click();URL.revokeObjectURL(u);showToast('方案已导出。');});
+        startUpdater();
+    });
+    </script>
+</body>
+</html>
